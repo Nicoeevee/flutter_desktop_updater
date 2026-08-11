@@ -341,8 +341,16 @@ final class WindowsDpapiReleaseKeyStore implements ReleaseKeySecretStore {
     );
     process.stdin.write(base64Encode(bytes));
     await process.stdin.close();
-    final stdout = await process.stdout.transform(utf8.decoder).join();
-    final stderr = await process.stderr.transform(utf8.decoder).join();
+    // PowerShell writes CLIXML progress records to the redirected error
+    // stream, and localized error text may use the host ANSI/OEM code page
+    // (for example GBK on Chinese Windows). Decode lossily so those bytes
+    // cannot surface as a cryptic "Missing extension byte" FormatException.
+    final stdout = await process.stdout
+        .transform(const Utf8Decoder(allowMalformed: true))
+        .join();
+    final stderr = await process.stderr
+        .transform(const Utf8Decoder(allowMalformed: true))
+        .join();
     final exitCode = await process.exitCode;
     if (exitCode != 0) {
       // Do not include PowerShell output: it could contain sensitive data.
@@ -431,6 +439,7 @@ Future<void> _checkFilePermissions(File file) async {
 }
 
 const _dpapiScript = r'''
+$ProgressPreference = 'SilentlyContinue'
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Security
 $encoded = [Console]::In.ReadToEnd().Trim()
