@@ -457,6 +457,7 @@ macos:
   test("macOS publish uses PKG packager when configured", () async {
     final root = await _createFixture("macos");
     final output = StringBuffer();
+    final events = <String>[];
     final pkgPackager = _FakePkgPackager();
     final zipPackager = _RecordingPackager(<String>[]);
     await File(path.join(root.path, "desktop_updater.yaml")).writeAsString("""
@@ -473,13 +474,27 @@ macos:
     packageIdentifier: com.example.app.pkg
     installLocation: /Applications
     signingIdentifier: "Developer ID Installer: Example Corp (TEAMID1234)"
+hooks:
+  prePackage:
+    - command: ./tool/prepare_macos_jre_for_notarization.sh
+      platforms: [macos]
 """);
     try {
       final publisher = ReleasePublisher(
         skipBuild: true,
         packager: zipPackager,
         pkgPackager: pkgPackager,
-        runProcess: _fakeMacOSNotarizationProcess,
+        runProcess: (executable, arguments) async {
+          if (executable == "/usr/bin/xcrun" &&
+              arguments.contains("notarytool")) {
+            events.add("NOTARIZE");
+          }
+          return _fakeMacOSNotarizationProcess(executable, arguments);
+        },
+        runHookCommand: (command, {required environment}) async {
+          events.add("HOOK");
+          return ProcessResult(0, 0, "", "");
+        },
         isMacOSHost: false,
       );
 
@@ -500,6 +515,7 @@ macos:
       expect(pkgPackager.requests.single.minimumUpdaterVersion, "2.7.0");
       expect(manifest.artifact.kind, "pkgInstaller");
       expect(manifest.artifact.path, endsWith(".pkg"));
+      expect(events, ["HOOK", "NOTARIZE"]);
     } finally {
       await root.delete(recursive: true);
     }

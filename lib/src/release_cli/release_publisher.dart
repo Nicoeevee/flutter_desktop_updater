@@ -239,15 +239,6 @@ class ReleasePublisher {
       output: output,
     );
 
-    if (platform == "macos" && config.macos.notarize) {
-      await _notarizeMacOS(
-        app: metadata.input,
-        config: config.macos,
-        runProcess: runProcess,
-        output: output,
-      );
-    }
-
     await _runReleaseHooks(
       hooks: config.hooks.prePackage,
       phase: "prePackage",
@@ -258,6 +249,18 @@ class ReleasePublisher {
       runHookCommand: runHookCommand,
       output: output,
     );
+
+    // App-owned prePackage hooks may need to sign nested runtime assets (for
+    // example the embedded JRE) before the built-in macOS notarization pass
+    // signs, submits, and staples the complete application bundle.
+    if (platform == "macos" && config.macos.notarize) {
+      await _notarizeMacOS(
+        app: metadata.input,
+        config: config.macos,
+        runProcess: runProcess,
+        output: output,
+      );
+    }
 
     output.writeln("Packaging update...");
     final archiveAppName = _artifactNameStem(metadata.appName);
@@ -1279,19 +1282,33 @@ Future<void> _signMacOSAppForNotarization({
 
 Future<List<FileSystemEntity>> _nestedMacOSCodeToSign(Directory app) async {
   final frameworks = Directory(path.join(app.path, "Contents", "Frameworks"));
-  if (!await frameworks.exists()) {
-    return const [];
-  }
-
   final entities = <FileSystemEntity>[];
-  await for (final entity in frameworks.list(
-    recursive: true,
-    followLinks: false,
-  )) {
-    if (_shouldSignNestedMacOSCode(entity)) {
-      entities.add(entity);
+  if (await frameworks.exists()) {
+    await for (final entity in frameworks.list(
+      recursive: true,
+      followLinks: false,
+    )) {
+      if (_shouldSignNestedMacOSCode(entity)) {
+        entities.add(entity);
+      }
     }
   }
+
+  // The one-shot privileged helper is an executable without a conventional
+  // Mach-O extension and lives outside Contents/Frameworks. It must still be
+  // re-signed with the release Developer ID before notarization.
+  final installHelper = File(
+    path.join(
+      app.path,
+      "Contents",
+      "Helpers",
+      "DesktopUpdaterInstallHelper",
+    ),
+  );
+  if (await installHelper.exists()) {
+    entities.add(installHelper);
+  }
+
   entities.sort((a, b) {
     final depthComparison =
         path.split(b.path).length.compareTo(path.split(a.path).length);
@@ -1319,6 +1336,7 @@ List<String> _codesignArguments(String identity, String target) {
     "--force",
     "--options",
     "runtime",
+    "--preserve-metadata=entitlements",
     "--timestamp",
     "--sign",
     identity,
