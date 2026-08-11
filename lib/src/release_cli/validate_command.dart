@@ -263,13 +263,28 @@ class ReleaseValidator {
   }
 
   Future<File> _downloadArtifact(Uri url) async {
-    final response = await _get(url);
-    final tempDir = await Directory.systemTemp.createTemp("release_validate_");
-    final file = File(
-      path.join(tempDir.path, "artifact${_artifactExtensionForUrl(url)}"),
-    );
-    await file.writeAsBytes(response.bodyBytes);
-    return file;
+    const maxAttempts = 3;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        final response = await _get(url);
+        final tempDir =
+            await Directory.systemTemp.createTemp("release_validate_");
+        final file = File(
+          path.join(tempDir.path, "artifact${_artifactExtensionForUrl(url)}"),
+        );
+        await file.writeAsBytes(response.bodyBytes);
+        return file;
+      } on http.ClientException {
+        if (attempt == maxAttempts) rethrow;
+        // Transient transport failures (for example a proxy dropping a large
+        // download mid-stream) must not fail the publication on the first try.
+        await Future<void>.delayed(Duration(seconds: attempt));
+      } on SocketException {
+        if (attempt == maxAttempts) rethrow;
+        await Future<void>.delayed(Duration(seconds: attempt));
+      }
+    }
+    throw StateError("artifact download failed: $url");
   }
 
   Future<void> _validateMacOSArtifactTrust({
