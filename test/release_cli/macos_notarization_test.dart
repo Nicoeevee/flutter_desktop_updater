@@ -100,7 +100,7 @@ void main() {
       for (final command in signCommands) {
         expect(
           command,
-          contains("--preserve-metadata entitlements"),
+          contains("--preserve-metadata=entitlements"),
           reason: "re-signing must keep the app's original entitlements "
               "(e.g. com.apple.security.cs.allow-jit for a bundled JRE)",
         );
