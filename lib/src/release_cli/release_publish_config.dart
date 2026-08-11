@@ -542,15 +542,19 @@ MacOSPublishConfig _readMacOSConfig(
   final dmg = _readMacOSDmgConfig(macos, appName);
   final pkg = _readMacOSPkgConfig(macos);
   final notarize = cliOverrides.notarize ||
-      (_boolValue(macos, "notarize", displayName: "macos.notarize") ?? false);
+      (_boolValue(macos, "notarize", displayName: "macos.notarize") ?? false) ||
+      _environmentFlag("DESKTOP_UPDATER_NOTARIZE");
   final config = MacOSPublishConfig(
     notarize: notarize,
     artifactKind: artifactKind,
     dmg: dmg,
     pkg: pkg,
-    developerIdApplication: _stringValue(macos, "developerIdApplication"),
-    notaryProfile: _stringValue(macos, "notaryProfile"),
-    keychain: _stringValue(macos, "keychain"),
+    developerIdApplication: _stringValue(macos, "developerIdApplication") ??
+        _environmentValue("DESKTOP_UPDATER_DEVELOPER_ID_APPLICATION"),
+    notaryProfile: _stringValue(macos, "notaryProfile") ??
+        _environmentValue("DESKTOP_UPDATER_NOTARY_PROFILE"),
+    keychain: _stringValue(macos, "keychain") ??
+        _environmentValue("DESKTOP_UPDATER_KEYCHAIN"),
     staple: _boolValue(macos, "staple", displayName: "macos.staple") ?? true,
     gatekeeperAssess: _boolValue(
           macos,
@@ -767,6 +771,13 @@ String? _stringValue(Map<String, dynamic> map, String key) {
   final value = map[key];
   return value?.toString();
 }
+
+String? _environmentValue(String key) {
+  final value = Platform.environment[key]?.trim();
+  return value == null || value.isEmpty ? null : value;
+}
+
+bool _environmentFlag(String key) => _environmentValue(key) == "1";
 
 List<String>? _stringListValue(Map<String, dynamic> map, String key) {
   final value = map[key];
