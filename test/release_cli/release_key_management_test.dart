@@ -99,6 +99,28 @@ void main() {
     keyPair.destroy();
   });
 
+  test("Windows DPAPI subprocess tolerates non-UTF8 streams and hides progress",
+      () {
+    // PowerShell 5.1 writes CLIXML progress records to the redirected error
+    // stream even on success, and localized text may be GBK/ANSI encoded on
+    // non-English Windows. Strict UTF-8 decoding turned that into a cryptic
+    // "Missing extension byte" failure; the store must decode lossily and the
+    // script must suppress progress records.
+    final source = File(
+      "lib/src/release_cli/keys/release_key_store.dart",
+    ).readAsStringSync();
+    expect(
+      source,
+      contains(r"$ProgressPreference = 'SilentlyContinue'"),
+      reason: "DPAPI script must suppress PowerShell progress records",
+    );
+    expect(
+      source,
+      contains("const Utf8Decoder(allowMalformed: true)"),
+      reason: "DPAPI subprocess output must be decoded lossily",
+    );
+  });
+
   test("local store round trips seeds with restrictive permissions", () async {
     final root =
         await Directory.systemTemp.createTemp("release_key_store_test_");
