@@ -11,6 +11,7 @@ import "package:desktop_updater/src/release_cli/release_command.dart";
 import "package:desktop_updater/src/release_cli/validate_command.dart";
 import "package:desktop_updater/src/release_manifest.dart";
 import "package:flutter_test/flutter_test.dart";
+import "package:http/http.dart" as http;
 import "package:path/path.dart" as path;
 
 import "../fixtures/update_server.dart";
@@ -171,6 +172,37 @@ void main() {
         contains(
             "/usr/sbin/pkgutil --check-signature ${commands.first.split(" ").last}"),
       );
+    } finally {
+      await fixture.delete();
+    }
+  });
+
+  test("artifact download retries transient connection failures", () async {
+    final fixture = await createHostedPublishFixture(
+      targetVersion: "2.0.1",
+      targetBuildNumber: 201,
+    );
+    try {
+      final output = StringBuffer();
+      final manifest = await PublishManifest.readFrom(fixture.manifestFile);
+      final inner = http.Client();
+      addTearDown(inner.close);
+      var artifactGets = 0;
+      final client = _FlakyArtifactClient(inner, onArtifactGet: () {
+        artifactGets += 1;
+        if (artifactGets == 1) {
+          throw http.ClientException("Connection closed while receiving data");
+        }
+      });
+
+      await ReleaseValidator(
+        isMacOSHost: false,
+        client: client,
+      ).validateReleaseFiles(manifest: manifest, output: output);
+
+      expect(output.toString(), contains("Hosted artifact SHA-256: OK"));
+      expect(artifactGets, greaterThanOrEqualTo(2),
+          reason: "the first artifact download attempt must be retried");
     } finally {
       await fixture.delete();
     }
@@ -458,6 +490,23 @@ class HostedPublishFixture {
   Future<void> delete() async {
     await server.close();
     await projectRoot.delete(recursive: true);
+  }
+}
+
+/// Wraps a real HTTP client and fails the first artifact (zip) request with a
+/// transient transport error, mirroring a proxy dropping a large download.
+class _FlakyArtifactClient extends http.BaseClient {
+  _FlakyArtifactClient(this._inner, {required this.onArtifactGet});
+
+  final http.Client _inner;
+  final void Function() onArtifactGet;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (request.url.path.endsWith(".zip")) {
+      onArtifactGet();
+    }
+    return _inner.send(request);
   }
 }
 
