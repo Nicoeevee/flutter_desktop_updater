@@ -239,15 +239,6 @@ class ReleasePublisher {
       output: output,
     );
 
-    if (platform == "macos" && config.macos.notarize) {
-      await _notarizeMacOS(
-        app: metadata.input,
-        config: config.macos,
-        runProcess: runProcess,
-        output: output,
-      );
-    }
-
     await _runReleaseHooks(
       hooks: config.hooks.prePackage,
       phase: "prePackage",
@@ -258,6 +249,18 @@ class ReleasePublisher {
       runHookCommand: runHookCommand,
       output: output,
     );
+
+    // App-owned prePackage hooks may need to sign nested runtime assets (for
+    // example the embedded JRE) before the built-in macOS notarization pass
+    // signs, submits, and staples the complete application bundle.
+    if (platform == "macos" && config.macos.notarize) {
+      await _notarizeMacOS(
+        app: metadata.input,
+        config: config.macos,
+        runProcess: runProcess,
+        output: output,
+      );
+    }
 
     output.writeln("Packaging update...");
     final archiveAppName = _artifactNameStem(metadata.appName);
