@@ -81,23 +81,34 @@ void main() {
         ),
       );
       expect(commands[2], contains("/usr/bin/codesign --force"));
-      expect(commands[2], contains(appPath));
-      expect(commands[3], contains("/usr/bin/codesign --verify"));
-      expect(commands[4], contains("/usr/bin/ditto -c -k --keepParent"));
-      expect(commands[5], contains("/usr/bin/xcrun notarytool submit"));
       expect(
-        commands[5],
+        commands[2],
+        contains(
+          path.join(
+            appPath,
+            "Contents",
+            "Helpers",
+            "DesktopUpdaterInstallHelper",
+          ),
+        ),
+      );
+      expect(commands[3], contains(appPath));
+      expect(commands[4], contains("/usr/bin/codesign --verify"));
+      expect(commands[5], contains("/usr/bin/ditto -c -k --keepParent"));
+      expect(commands[6], contains("/usr/bin/xcrun notarytool submit"));
+      expect(
+        commands[6],
         contains("--keychain-profile desktop-updater-notary"),
       );
       expect(
-        commands[5],
+        commands[6],
         contains("--keychain /Users/me/Library/Keychains/login.keychain-db"),
       );
-      expect(commands[5], contains("--output-format json"));
-      expect(commands[6], contains("/usr/bin/xcrun stapler staple"));
-      expect(commands[7], contains("/usr/bin/xcrun stapler validate"));
-      expect(commands[8], contains("/usr/sbin/spctl --assess"));
-      expect(commands[9], startsWith("PACKAGE "));
+      expect(commands[6], contains("--output-format json"));
+      expect(commands[7], contains("/usr/bin/xcrun stapler staple"));
+      expect(commands[8], contains("/usr/bin/xcrun stapler validate"));
+      expect(commands[9], contains("/usr/sbin/spctl --assess"));
+      expect(commands[10], startsWith("PACKAGE "));
     } finally {
       await root.delete(recursive: true);
     }
@@ -222,6 +233,16 @@ PRODUCT_BUNDLE_IDENTIFIER = com.example.notarizeFixture
       frameworkName,
     );
   }
+  final helper = File(
+    path.join(
+      app.path,
+      "Contents",
+      "Helpers",
+      "DesktopUpdaterInstallHelper",
+    ),
+  );
+  await helper.parent.create(recursive: true);
+  await helper.writeAsString("helper");
 
   return root;
 }

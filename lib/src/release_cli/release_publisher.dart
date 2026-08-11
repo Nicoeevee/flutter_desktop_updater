@@ -1282,19 +1282,33 @@ Future<void> _signMacOSAppForNotarization({
 
 Future<List<FileSystemEntity>> _nestedMacOSCodeToSign(Directory app) async {
   final frameworks = Directory(path.join(app.path, "Contents", "Frameworks"));
-  if (!await frameworks.exists()) {
-    return const [];
-  }
-
   final entities = <FileSystemEntity>[];
-  await for (final entity in frameworks.list(
-    recursive: true,
-    followLinks: false,
-  )) {
-    if (_shouldSignNestedMacOSCode(entity)) {
-      entities.add(entity);
+  if (await frameworks.exists()) {
+    await for (final entity in frameworks.list(
+      recursive: true,
+      followLinks: false,
+    )) {
+      if (_shouldSignNestedMacOSCode(entity)) {
+        entities.add(entity);
+      }
     }
   }
+
+  // The one-shot privileged helper is an executable without a conventional
+  // Mach-O extension and lives outside Contents/Frameworks. It must still be
+  // re-signed with the release Developer ID before notarization.
+  final installHelper = File(
+    path.join(
+      app.path,
+      "Contents",
+      "Helpers",
+      "DesktopUpdaterInstallHelper",
+    ),
+  );
+  if (await installHelper.exists()) {
+    entities.add(installHelper);
+  }
+
   entities.sort((a, b) {
     final depthComparison =
         path.split(b.path).length.compareTo(path.split(a.path).length);
