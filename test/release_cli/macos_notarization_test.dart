@@ -93,6 +93,18 @@ void main() {
         ),
       );
       expect(commands[3], contains(appPath));
+      final signCommands = commands
+          .where((command) => command.contains("/usr/bin/codesign --force"))
+          .toList();
+      expect(signCommands, isNotEmpty);
+      for (final command in signCommands) {
+        expect(
+          command,
+          contains("--preserve-metadata entitlements"),
+          reason: "re-signing must keep the app's original entitlements "
+              "(e.g. com.apple.security.cs.allow-jit for a bundled JRE)",
+        );
+      }
       expect(commands[4], contains("/usr/bin/codesign --verify"));
       expect(commands[5], contains("/usr/bin/ditto -c -k --keepParent"));
       expect(commands[6], contains("/usr/bin/xcrun notarytool submit"));
